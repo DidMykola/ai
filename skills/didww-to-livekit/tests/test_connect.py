@@ -43,7 +43,8 @@ def jwt(auth):
     ok = hmac.compare_digest(b64d(sig), hmac.new(b"s3cret", f"{h}.{p}".encode(), hashlib.sha256).digest())
     return ok, json.loads(b64d(h)), json.loads(b64d(p))
 FULL = ["--number", "+33144556677", "--agent", "my-agent", "--inbound-user", "iu", "--inbound-pass", "ip",
-        "--outbound-host", "fra.eu.out.didww.com", "--outbound-user", "ou", "--outbound-pass", "op"]
+        "--outbound-host", "fra.eu.out.didww.com", "--outbound-user", "ou", "--outbound-pass", "op",
+        "--sip-uri", "sip:vjnxecm0tjk.sip.livekit.cloud"]
 M = "https://myproj.livekit.cloud/twirp/livekit.SIP/"
 
 reqs, out, code = run(["--help"], env={})
@@ -55,24 +56,43 @@ check("three Twirp POSTs in order: inbound trunk, dispatch rule, outbound trunk"
       [r["url"] for r in reqs] == [M + m for m in ("CreateSIPInboundTrunk", "CreateSIPDispatchRule", "CreateSIPOutboundTrunk")], [r["url"] for r in reqs])
 t = reqs[0]["body"].get("trunk", {}) if reqs else {}
 check("inbound trunk: E.164 number + digest auth_username/auth_password", t.get("numbers") == ["+33144556677"] and t.get("auth_username") == "iu" and t.get("auth_password") == "ip", json.dumps(t))
-check("inbound trunk: SRTP allowed by default", t.get("media_encryption") == "SIP_MEDIA_ENCRYPT_ALLOW", repr(t.get("media_encryption")))
+G711 = [{"name": "PCMA", "rate": 8000}, {"name": "PCMU", "rate": 8000}]
+SECURE = {"only_listed_codecs": True, "codecs": G711, "encryption": "SIP_MEDIA_ENCRYPT_REQUIRE"}
+check("inbound trunk: G.711 only, SRTP required by default, no deprecated media_encryption",
+      t.get("media") == SECURE and "media_encryption" not in t, json.dumps(t.get("media")))
 d = reqs[1]["body"].get("dispatch_rule", {}) if len(reqs) > 1 else {}
 check("dispatch rule: bound to the new trunk id, one room per call, agent by name",
       d.get("trunk_ids") == ["ST_in1"] and "room_prefix" in d.get("rule", {}).get("dispatch_rule_individual", {}) and d.get("room_config", {}).get("agents", [{}])[0].get("agent_name") == "my-agent", json.dumps(d))
 o = reqs[2]["body"].get("trunk", {}) if len(reqs) > 2 else {}
-check("outbound trunk: DIDWW host only, TCP by default, DIDWW auth pair, number",
-      o.get("address") == "fra.eu.out.didww.com" and o.get("transport") == "SIP_TRANSPORT_TCP" and o.get("auth_username") == "ou" and o.get("auth_password") == "op" and o.get("numbers") == ["+33144556677"], json.dumps(o))
+check("outbound trunk: DIDWW host only, TLS and SRTP by default, DIDWW auth pair, number",
+      o.get("address") == "fra.eu.out.didww.com" and o.get("transport") == "SIP_TRANSPORT_TLS" and o.get("auth_username") == "ou" and o.get("auth_password") == "op" and o.get("numbers") == ["+33144556677"] and o.get("media") == SECURE, json.dumps(o))
+check("prints the DIDWW side: host without sip:, {DID}, codecs, TLS 5061, SRTP SDES, Cloud ranges, and the DIDWW trunk note",
+      "Host vjnxecm0tjk.sip.livekit.cloud" in out and "{DID}" in out and "PCMA and PCMU" in out and "SRTP Mode SRTP SDES" in out and "143.223.88.0/21" in out and "5061, Transport TLS" in out
+      and "NOTE for the DIDWW trunks" in out and "500 No suitable media" in out and "400 Bad Request" in out, out[-900:])
 ok, h, p = jwt(reqs[0]["headers"]["authorization"]) if reqs else (False, {}, {})
 check("JWT: HS256 signed with the API secret, iss = key, sip.admin grant, short expiry",
       ok and h.get("alg") == "HS256" and p.get("iss") == "APIkey123" and p.get("sip", {}).get("admin") is True and 0 < p.get("exp", 0) - p.get("nbf", 0) <= 3600, json.dumps(p))
 check("all requests: JSON body, non-Python User-Agent",
       bool(reqs) and all("json" in r["headers"].get("content-type", "") and not r["headers"].get("user-agent", "python").lower().startswith("python") for r in reqs))
-check("prints the ids and the LiveKit SIP URI for the DIDWW trunk", "ST_in1" in out and "SDR_1" in out and "ST_out1" in out and "sip:myproj.sip.livekit.cloud" in out, out[-300:])
+check("prints the ids and the LiveKit SIP URI for the DIDWW trunk", "ST_in1" in out and "SDR_1" in out and "ST_out1" in out and "sip:vjnxecm0tjk.sip.livekit.cloud" in out and "myproj.sip" not in out, out[-300:])
 reqs, out, code = run(FULL, env={**ENV, "LIVEKIT_URL": "wss://myproj.livekit.cloud/"})
 check("wss:// project URL becomes the https API host", bool(reqs) and reqs[0]["url"].startswith("https://myproj.livekit.cloud/twirp"))
-reqs, out, code = run(FULL + ["--transport", "TLS", "--srtp", "require"])
-check("--transport TLS + --srtp require map to the LiveKit enums on both trunks",
-      len(reqs) == 3 and reqs[2]["body"]["trunk"]["transport"] == "SIP_TRANSPORT_TLS" and reqs[0]["body"]["trunk"]["media_encryption"] == "SIP_MEDIA_ENCRYPT_REQUIRE" and reqs[2]["body"]["trunk"]["media_encryption"] == "SIP_MEDIA_ENCRYPT_REQUIRE" and "5061" in out)
+reqs, out, code = run(FULL + ["--transport", "TCP", "--srtp", "disable"])
+check("--transport tcp --srtp disable gives plain trunks and says they are not encrypted",
+      len(reqs) == 3 and reqs[2]["body"]["trunk"]["transport"] == "SIP_TRANSPORT_TCP" and "encryption" not in reqs[0]["body"]["trunk"]["media"] and "encryption" not in reqs[2]["body"]["trunk"]["media"]
+      and "5060, Transport TCP" in out and "SRTP Mode Disabled" in out and "NOT encrypted" in out and "NOTE for the DIDWW trunks" not in out, out[-500:])
+reqs, out, code = run(FULL + ["--transport", "tcp"])
+check("SRTP without TLS is created but flagged as unverified", len(reqs) == 3 and "NOTE: SRTP was only verified" in out and "5060, Transport TCP" in out)
+OUT = ["--outbound-only", "--number", "+33144556677", "--outbound-host", "fra.eu.out.didww.com", "--outbound-user", "ou", "--outbound-pass", "op"]
+reqs, out, code = run(OUT)
+o = reqs[0]["body"]["trunk"] if reqs else {}
+check("--outbound-only creates just the outbound trunk, no agent or inbound flags needed",
+      code == 0 and [r["url"].rsplit("/", 1)[-1] for r in reqs] == ["CreateSIPOutboundTrunk"] and o.get("address") == "fra.eu.out.didww.com" and o.get("transport") == "SIP_TRANSPORT_TLS" and o.get("media") == SECURE
+      and "ST_out1" in out and "DIDWW inbound trunk" not in out and "DIDWW panel" in out and "143.223.88.0/21" in out, out[-600:])
+reqs, out, code = run(["--outbound-only", "--number", "+33144556677"])
+check("--outbound-only without the outbound flags is refused", code != 0 and not reqs)
+reqs, out, code = run(OUT[:-2])
+check("--outbound-only without credentials is refused", code != 0 and not reqs)
 reqs, out, code = run(FULL + ["--transport", "sctp"])
 check("unknown transport is rejected before any API call", code != 0 and not reqs)
 reqs, out, code = run(FULL[:8])
@@ -95,8 +115,11 @@ reqs, out, code = run(["--number", "+33144556677", "--agent", "a", "--inbound-us
 t = reqs[0]["body"]["trunk"] if reqs else {}
 check("digest and allowlist can be combined", t.get("auth_username") == "u" and t.get("allowed_addresses") == ["1.2.3.4"])
 reqs, out, code = run(["--show"])
+check("without --sip-uri the SIP URI is a placeholder, never derived from the project URL",
+      code == 0 and "myproj.sip" not in out and "Project settings" in out, out[:200])
+reqs, out, code = run(["--show", "--sip-uri", "sip:vjnxecm0tjk.sip.livekit.cloud;transport=tcp"])
 check("--show lists trunks and rules, creates nothing, prints the SIP URI",
-      [r["url"].rsplit("/", 1)[-1] for r in reqs] == ["ListSIPInboundTrunk", "ListSIPDispatchRule", "ListSIPOutboundTrunk"] and code == 0 and "sip:myproj.sip.livekit.cloud" in out and "ST_in1" in out and "my-agent" in out and "fra.eu.out.didww.com" in out, out[-300:])
+      [r["url"].rsplit("/", 1)[-1] for r in reqs] == ["ListSIPInboundTrunk", "ListSIPDispatchRule", "ListSIPOutboundTrunk"] and code == 0 and "sip:vjnxecm0tjk.sip.livekit.cloud" in out and ";transport" not in out and "ST_in1" in out and "my-agent" in out and "fra.eu.out.didww.com" in out, out[-300:])
 reqs, out, code = run(FULL, fail=401)
 check("API error exits nonzero with status and body, no traceback", code != 0 and "401" in out and "invalid token" in out and "Traceback" not in out, out[-200:])
 reqs, out, code = run([])

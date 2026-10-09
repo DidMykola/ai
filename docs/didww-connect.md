@@ -95,7 +95,7 @@ All DIDWW changes go through the DIDWW MCP under your own account permissions. C
 | Vogent | `sip.vogent.ai` | Digest auth |
 | OpenAI Realtime | `sip:{project_id}@sip.api.openai.com;transport=tls` | TLS and SRTP mandatory; EU host `sip-eu.api.openai.com` |
 | xAI Grok | `sip:{number}@sip.voice.x.ai;transport=tls` | Digest auth set when the number is registered with xAI |
-| LiveKit | `sip:{subdomain}.sip.livekit.cloud` | 5060 TCP/UDP or 5061 TLS; region-pinned `{subdomain}.{eu|us|uk|india|japan|aus|canada|sa}.sip.livekit.cloud`; numbers carry the `+` |
+| LiveKit | `sip:{sip_subdomain}.sip.livekit.cloud` (copy the SIP URI from Project settings) | 5060 TCP/UDP or 5061 TLS; region-pinned `{sip_subdomain}.{eu|us|uk|india|japan|aus|canada|sa}.sip.livekit.cloud`; numbers carry the `+` |
 
 ## Step 4. Verify the connection
 

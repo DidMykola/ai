@@ -97,9 +97,10 @@ keys where a column says so.
 
 ## LiveKit (Cloud or self-hosted)
 
-- Panel `cloud.livekit.io`: project, Settings, Keys (API key plus a
-  secret shown ONCE); the project URL, SIP URI and regional SIP
-  endpoints are on the same settings page. No MCP; the SIP API is a
+- Panel `cloud.livekit.io`: project, Settings, API keys (API key plus a
+  secret shown ONCE); the Project URL and the SIP URI (a different
+  subdomain, never derived from the project URL) are on the same
+  settings page. No MCP; the SIP API is a
   Twirp HTTP service, covered by the skill's `scripts/connect.py`.
 - Money: Build tier FREE with no card (1,000 agent-session minutes,
   1,000 SIP minutes, 5 concurrent sessions); Ship 50 USD/month (5,000

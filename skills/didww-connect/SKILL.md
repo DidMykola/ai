@@ -62,9 +62,10 @@ routing. Vogent `sip.vogent.ai`. OpenAI
 `sip:{project_id}@sip.api.openai.com;transport=tls` (TLS+SRTP
 mandatory, webhook backend is the gate). xAI
 `sip:{number}@sip.voice.x.ai;transport=tls` (digest via number
-registration). LiveKit `sip:{subdomain}.sip.livekit.cloud` (5060
+registration). LiveKit `sip:{sip_subdomain}.sip.livekit.cloud` (the SIP URI
+from Project settings, not derived from the project URL; 5060
 TCP/UDP, 5061 TLS, digest; region-pinned
-`{subdomain}.{eu|us|uk|india|japan|aus|canada|sa}.sip.livekit.cloud`;
+`{sip_subdomain}.{eu|us|uk|india|japan|aus|canada|sa}.sip.livekit.cloud`;
 numbers on its trunk need the `+`).
 
 ## Panels, keys and money
